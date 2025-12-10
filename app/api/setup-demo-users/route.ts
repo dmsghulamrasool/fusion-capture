@@ -32,9 +32,9 @@ export async function POST(request: Request) {
     }
 
     // Check role access permission - Admin module requires canView
-    const userId = session.user.id;
+    const seccuserId = session.user.id;
     const hasViewPermission = await hasPagePermission(
-      userId,
+      seccuserId,
       "/admin",
       "canView"
     );
