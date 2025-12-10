@@ -20,7 +20,12 @@ export function RequirePermission({
   fallback,
   showFallback = true,
 }: RequirePermissionProps) {
-  const { hasPermission, hasAnyPermission, hasAllPermissions } = useAuth();
+  const { user, hasPermission, hasAnyPermission, hasAllPermissions } = useAuth();
+
+  // If no user is logged in and permission is required, deny access
+  if (!user && (permission || (permissions && permissions.length > 0))) {
+    return showFallback ? (fallback || null) : null;
+  }
 
   let hasAccess = true;
 

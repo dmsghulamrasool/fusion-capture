@@ -30,11 +30,13 @@ function BlogPostContent() {
   const [loading, setLoading] = useState(true);
 
   // Check page-level permission
+  // Only redirect to unauthorized if user is authenticated but doesn't have permission
+  // If user is not authenticated, just don't show content (blog view is public)
   useEffect(() => {
-    if (!permissionsLoading && !pagePermissions.canView) {
+    if (!permissionsLoading && user && !pagePermissions.canView) {
       router.push("/unauthorized");
     }
-  }, [permissionsLoading, pagePermissions.canView, router]);
+  }, [permissionsLoading, pagePermissions.canView, router, user]);
 
   useEffect(() => {
     if (params.id) {
@@ -98,20 +100,10 @@ function BlogPostContent() {
   }
 
   const isAuthenticated = !!user;
-  const isAdmin = user?.roles?.includes("admin");
-  const isEditor = user?.roles?.includes("editor");
-  const isAuthor = post.authorId?.toString() === user?.id?.toString();
 
-  // Use page-level permissions
-  const canEdit =
-    isAuthenticated &&
-    pagePermissions.canEdit &&
-    (isAdmin || isEditor || isAuthor);
-
-  const canDelete =
-    isAuthenticated &&
-    pagePermissions.canDelete &&
-    (isAdmin || isEditor || isAuthor);
+  // Use page-level permissions - only check permissions, not roles or authorship
+  const canEdit = isAuthenticated && pagePermissions.canEdit;
+  const canDelete = isAuthenticated && pagePermissions.canDelete;
   return (
     <PageTransition>
       <div className="min-h-screen bg-white">

@@ -192,8 +192,31 @@ export async function hasPagePermission(
   // User needs at least one role with the permission
   for (const role of roles) {
     const roleAccess = await RoleAccess.findOne({ role, page });
-    if (roleAccess && roleAccess[permission]) {
-      return true;
+    
+    // Handle defaults based on permission type
+    if (permission === 'canView') {
+      // canView defaults to true if not set
+      if (!roleAccess) {
+        return true; // Default to true
+      }
+      return roleAccess.canView ?? true; // Default to true if undefined
+    } else {
+      // For other permissions (canAdd, canEdit, canDelete), check the value
+      // Profile page: canEdit defaults to true, others default to false
+      const isProfilePage = page === '/profile';
+      if (!roleAccess) {
+        if (isProfilePage && permission === 'canEdit') {
+          return true; // Profile canEdit defaults to true
+        }
+        return false; // Other permissions default to false
+      }
+      
+      // Check the permission value, with defaults
+      if (isProfilePage && permission === 'canEdit') {
+        return roleAccess.canEdit ?? true; // Profile canEdit defaults to true
+      }
+      
+      return roleAccess[permission] ?? false; // Default to false
     }
   }
   

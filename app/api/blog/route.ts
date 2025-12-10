@@ -4,6 +4,7 @@ import NextAuth from "next-auth";
 import { authOptions } from "@/lib/auth";
 import connectMongoose from "@/lib/mongoose";
 import BlogPost from "@/models/BlogPost";
+import { hasPagePermission } from "@/lib/rbac";
 
 const { auth } = NextAuth(authOptions as any);
 
@@ -47,7 +48,7 @@ export async function GET(request: Request) {
 
 /**
  * POST - Create a new blog post
- * Requires: posts.write permission
+ * Requires: canAdd permission for /blog/create page
  */
 
 export async function POST(request: Request) {
@@ -58,9 +59,15 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // Check permission
-    const permissions = session.user.permissions || [];
-    if (!permissions.includes("posts.write")) {
+    // Check role access permission - Blog module requires canAdd
+    const userId = session.user.id;
+    const hasAddPermission = await hasPagePermission(
+      userId,
+      "/blog/create",
+      "canAdd"
+    );
+
+    if (!hasAddPermission) {
       return NextResponse.json(
         { error: "Insufficient permissions" },
         { status: 403 }

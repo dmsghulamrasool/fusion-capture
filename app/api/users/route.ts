@@ -1,12 +1,7 @@
 import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
 import clientPromise from "@/lib/mongodb";
 import connectMongoose from "@/lib/mongoose";
 import UserRole from "@/models/UserRole";
-import NextAuth from "next-auth";
-import { authOptions } from "@/lib/auth";
-
-const { auth } = NextAuth(authOptions as any);
 
 /**
  * GET - Get all users with their roles
@@ -76,6 +71,10 @@ const { auth } = NextAuth(authOptions as any);
 //     );
 //   }
 // }
+/**
+ * GET - Get all users with their roles
+ * OPEN - No authentication required
+ */
 export async function GET(request: Request) {
   try {
     // Get all users from NextAuth's users collection

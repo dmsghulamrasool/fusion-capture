@@ -6,6 +6,7 @@ import UserRole from "@/models/UserRole";
 import { ObjectId } from "mongodb";
 import NextAuth from "next-auth";
 import { authOptions } from "@/lib/auth";
+import { hasPagePermission } from "@/lib/rbac";
 
 const { auth } = NextAuth(authOptions as any);
 
@@ -30,11 +31,17 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // Check if user has admin permission
-    const permissions = session.user.permissions || [];
-    if (!permissions.includes("admin.dashboard")) {
+    // Check role access permission - Admin module requires canView
+    const userId = session.user.id;
+    const hasViewPermission = await hasPagePermission(
+      userId,
+      "/admin",
+      "canView"
+    );
+
+    if (!hasViewPermission) {
       return NextResponse.json(
-        { error: "Only admins can change user roles" },
+        { error: "Insufficient permissions. Only admins can change user roles." },
         { status: 403 }
       );
     }
@@ -166,11 +173,17 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // Check if user has admin permission
-    const permissions = session.user.permissions || [];
-    if (!permissions.includes("admin.dashboard")) {
+    // Check role access permission - Admin module requires canView
+    const userId = session.user.id;
+    const hasViewPermission = await hasPagePermission(
+      userId,
+      "/admin",
+      "canView"
+    );
+
+    if (!hasViewPermission) {
       return NextResponse.json(
-        { error: "Only admins can view all users" },
+        { error: "Insufficient permissions. Only admins can view all users." },
         { status: 403 }
       );
     }

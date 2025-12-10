@@ -13,11 +13,13 @@ function DashboardContent() {
   const { permissions: pagePermissions, loading: permissionsLoading } = usePagePermissions("/dashboard");
 
   // Check page-level permission
+  // Only redirect to unauthorized if user is authenticated but doesn't have permission
+  // If user is not authenticated, ProtectedRoute will handle redirect to login
   useEffect(() => {
-    if (!permissionsLoading && !pagePermissions.canView) {
+    if (!permissionsLoading && user && !pagePermissions.canView) {
       router.push("/unauthorized");
     }
-  }, [permissionsLoading, pagePermissions.canView, router]);
+  }, [permissionsLoading, pagePermissions.canView, router, user]);
 
   // Don't render if user doesn't have view permission
   if (permissionsLoading) {

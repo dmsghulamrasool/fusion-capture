@@ -16,7 +16,12 @@ export function RequireRole({
   fallback,
   showFallback = true,
 }: RequireRoleProps) {
-  const { hasRole } = useAuth();
+  const { user, hasRole } = useAuth();
+
+  // If no user is logged in, deny access
+  if (!user) {
+    return showFallback ? (fallback || null) : null;
+  }
 
   if (!hasRole(role)) {
     return showFallback ? (fallback || null) : null;

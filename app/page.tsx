@@ -1,5 +1,8 @@
+"use client";
+
 import { PageTransition } from "@/components/ui/Loading";
 
+// Home page is public and accessible to all users (authenticated and unauthenticated)
 export default function Home() {
   return (
     <PageTransition>

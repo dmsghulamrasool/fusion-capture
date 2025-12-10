@@ -1,11 +1,6 @@
 import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
-import NextAuth from "next-auth";
-import { authOptions } from "@/lib/auth";
 import connectMongoose from "@/lib/mongoose";
 import BlogPost from "@/models/BlogPost";
-
-const { auth } = NextAuth(authOptions as any);
 
 /**
  * GET - Get a single blog post by ID
@@ -76,34 +71,14 @@ export async function GET(
 
 /**
  * PUT - Update a blog post
- * Requires: posts.write permission and be the author
+ * No authentication required
  */
 export async function PUT(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    // const cookieStore = await cookies();
-    // const session = await auth({
-    //   cookies: cookieStore,
-    // } as any);
     const { id } = await params;
-
-    // if (!session?.user) {
-    //   return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    // }
-
-    // Check permission - Admin has all permissions
-    // const roles = session.user.roles || [];
-    // const permissions = session.user.permissions || [];
-    // const isAdmin = roles.includes("admin");
-
-    // if (!isAdmin && !permissions.includes("posts.write")) {
-    //   return NextResponse.json(
-    //     { error: "Insufficient permissions" },
-    //     { status: 403 }
-    //   );
-    // }
 
     await connectMongoose();
 
@@ -112,18 +87,6 @@ export async function PUT(
     if (!post) {
       return NextResponse.json({ error: "Post not found" }, { status: 404 });
     }
-
-    // // Check if user is the author (admin can edit any post)
-    // // Normalize IDs to strings for comparison
-    // const postAuthorId = post.authorId.toString();
-    // const userId = session.user.id.toString();
-
-    // if (postAuthorId !== userId && !isAdmin) {
-    //   return NextResponse.json(
-    //     { error: "You can only edit your own posts" },
-    //     { status: 403 }
-    //   );
-    // }
 
     const { title, content, published } = await request.json();
 
@@ -145,64 +108,27 @@ export async function PUT(
 
 /**
  * DELETE - Delete a blog post
- * Requires: posts.delete permission and be the author
+ * No authentication required
  */
 export async function DELETE(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    await connectMongoose();
     const { id } = await params;
+
+    await connectMongoose();
+
     const post = await BlogPost.findByIdAndDelete(id);
+
+    if (!post) {
+      return NextResponse.json({ error: "Post not found" }, { status: 404 });
+    }
+
     return NextResponse.json({
       success: true,
       message: "Post deleted successfully",
     });
-    // const cookieStore = await cookies();
-    // const session = await auth({
-    //   cookies: cookieStore,
-    // } as any);
-    // const { id } = await params;
-
-    // if (!session?.user) {
-    //   return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    // }
-
-    // // Check permission - Admin has all permissions
-    // const roles = session.user.roles || [];
-    // const permissions = session.user.permissions || [];
-    // const isAdmin = roles.includes("admin");
-
-    // if (!isAdmin && !permissions.includes("posts.delete")) {
-    //   return NextResponse.json(
-    //     { error: "Insufficient permissions" },
-    //     { status: 403 }
-    //   );
-    // }
-
-    // await connectMongoose();
-
-    // const post = await BlogPost.findById(id);
-
-    // if (!post) {
-    //   return NextResponse.json({ error: "Post not found" }, { status: 404 });
-    // }
-
-    // // Check if user is the author (admin can delete any)
-    // const postAuthorId = post.authorId.toString();
-    // const userId = session.user.id.toString();
-
-    // if (postAuthorId !== userId && !isAdmin) {
-    //   return NextResponse.json(
-    //     { error: "You can only delete your own posts" },
-    //     { status: 403 }
-    //   );
-    // }
-
-    // await BlogPost.findByIdAndDelete(id);
-
-    // return NextResponse.json({ success: true });
   } catch (error) {
     console.error("Error deleting blog post:", error);
     return NextResponse.json(

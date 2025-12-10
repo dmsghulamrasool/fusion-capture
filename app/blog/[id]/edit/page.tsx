@@ -1,11 +1,11 @@
 'use client';
 
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
-import { PERMISSIONS } from '@/lib/permissions';
 import { PageTransition } from '@/components/ui/Loading';
 import { useParams, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { usePagePermissions } from '@/hooks/usePagePermissions';
+import { useAuth } from '@/contexts/AuthContext';
 
 interface BlogPost {
   _id: string;
@@ -18,6 +18,7 @@ interface BlogPost {
 function EditPostContent() {
   const params = useParams();
   const router = useRouter();
+  const { user } = useAuth();
   const { permissions: pagePermissions, loading: permissionsLoading } = usePagePermissions("/blog/[id]/edit");
   const [post, setPost] = useState<BlogPost | null>(null);
   const [title, setTitle] = useState('');
@@ -27,11 +28,13 @@ function EditPostContent() {
   const [saving, setSaving] = useState(false);
 
   // Check page-level permission
+  // Only redirect to unauthorized if user is authenticated but doesn't have permission
+  // If user is not authenticated, ProtectedRoute will handle redirect to login
   useEffect(() => {
-    if (!permissionsLoading && !pagePermissions.canEdit) {
+    if (!permissionsLoading && user && !pagePermissions.canEdit) {
       router.push("/unauthorized");
     }
-  }, [permissionsLoading, pagePermissions.canEdit, router]);
+  }, [permissionsLoading, pagePermissions.canEdit, router, user]);
 
   useEffect(() => {
     if (params.id) {
@@ -174,7 +177,7 @@ function EditPostContent() {
 
 export default function EditPostPage() {
   return (
-    <ProtectedRoute requiredPermission={PERMISSIONS.POSTS_WRITE}>
+    <ProtectedRoute>
       <EditPostContent />
     </ProtectedRoute>
   );

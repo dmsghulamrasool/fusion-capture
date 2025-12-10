@@ -1,25 +1,28 @@
 "use client";
 
 import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
-import { PERMISSIONS } from "@/lib/permissions";
 import { PageTransition } from "@/components/ui/Loading";
 import { useRouter } from "next/navigation";
 import { useState, useEffect } from "react";
 import { usePagePermissions } from "@/hooks/usePagePermissions";
+import { useAuth } from "@/contexts/AuthContext";
 
 function CreatePostContent() {
   const router = useRouter();
+  const { user } = useAuth();
   const { permissions: pagePermissions, loading: permissionsLoading } = usePagePermissions("/blog/create");
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
   const [loading, setLoading] = useState(false);
 
   // Check page-level permission
+  // Only redirect to unauthorized if user is authenticated but doesn't have permission
+  // If user is not authenticated, ProtectedRoute will handle redirect to login
   useEffect(() => {
-    if (!permissionsLoading && !pagePermissions.canAdd) {
+    if (!permissionsLoading && user && !pagePermissions.canAdd) {
       router.push("/unauthorized");
     }
-  }, [permissionsLoading, pagePermissions.canAdd, router]);
+  }, [permissionsLoading, pagePermissions.canAdd, router, user]);
 
   // Don't render if user doesn't have add permission
   if (permissionsLoading) {
@@ -133,7 +136,7 @@ function CreatePostContent() {
 
 export default function CreatePostPage() {
   return (
-    <ProtectedRoute requiredPermission={PERMISSIONS.POSTS_WRITE}>
+    <ProtectedRoute>
       <CreatePostContent />
     </ProtectedRoute>
   );

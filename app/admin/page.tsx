@@ -1,5 +1,6 @@
 "use client";
 
+import React from "react";
 import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
 import { PERMISSIONS } from "@/lib/permissions";
 import { useAuth } from "@/contexts/AuthContext";
@@ -44,11 +45,13 @@ function AdminContent() {
   const [updatingAccess, setUpdatingAccess] = useState<string | null>(null);
 
   // Check page-level permission
+  // Only redirect to unauthorized if user is authenticated but doesn't have permission
+  // If user is not authenticated, ProtectedRoute will handle redirect to login
   useEffect(() => {
-    if (!permissionsLoading && !pagePermissions.canView) {
+    if (!permissionsLoading && user && !pagePermissions.canView) {
       router.push("/unauthorized");
     }
-  }, [permissionsLoading, pagePermissions.canView, router]);
+  }, [permissionsLoading, pagePermissions.canView, router, user]);
 
   useEffect(() => {
     fetchUsers();
@@ -269,6 +272,7 @@ function AdminContent() {
     }
   };
 
+
   if (loading || permissionsLoading) {
     return (
       <div className="min-h-screen bg-white flex items-center justify-center">
@@ -439,7 +443,7 @@ function AdminContent() {
                 Role Access Management
               </h2>
               <p className="text-sm text-gray-600 mt-1">
-                Configure page-level permissions for Editor and Viewer roles. Admin role has all permissions by default. All roles have view access by default, and Profile page has full permissions for everyone.
+                Configure module access for each role. Profile module supports View and Update permissions. Blog module supports View, Add, Update, and Delete permissions. Dashboard and Admin modules only support View access. Admin role has all permissions by default.
               </p>
             </div>
 
@@ -450,174 +454,456 @@ function AdminContent() {
             ) : (
               <div className="overflow-x-auto">
                 {(() => {
-                  // Use availablePages from API or extract from roleAccess
-                  const pages = availablePages.length > 0 
-                    ? availablePages.map(p => p.path)
-                    : Object.keys(roleAccess["editor"] || roleAccess["viewer"] || roleAccess["admin"] || {});
-                  
-                  if (pages.length === 0) {
-                    return (
-                      <div className="p-8 text-center text-gray-500">
-                        No role access data available
-                      </div>
-                    );
-                  }
+                  // Define modules (grouped pages)
+                  const modules = [
+                    { 
+                      name: "Profile", 
+                      pages: ["/profile"],
+                      description: "User Profile"
+                    },
+                    { 
+                      name: "Blog", 
+                      pages: ["/blog", "/blog/create", "/blog/[id]", "/blog/[id]/edit"],
+                      description: "Blog Management"
+                    },
+                    { 
+                      name: "Dashboard", 
+                      pages: ["/dashboard", "/editor"],
+                      description: "User & Editor Dashboards"
+                    },
+                    { 
+                      name: "Admin", 
+                      pages: ["/admin"],
+                      description: "Admin Dashboard"
+                    },
+                  ];
 
-                  // Group by roles
-                  return ["editor", "viewer"].map((role) => (
-                    <div key={role} className="mb-8">
-                      {/* Role Header */}
-                      <div className="bg-gray-50 px-6 py-3 border-b border-gray-200">
-                        <h3 className="text-lg font-semibold text-black">
-                          <span
-                            className={`px-3 py-1 inline-flex text-sm leading-5 font-semibold rounded-full mr-3 ${
-                              role === "editor"
-                                ? "bg-green-100 text-green-800"
-                                : "bg-blue-100 text-blue-800"
-                            }`}
+                  const roles = ["viewer", "editor", "admin"];
+
+                  // Helper functions to check module permissions
+                  const hasModulePermission = (
+                    role: string,
+                    modulePages: string[],
+                    permission: "canView" | "canAdd" | "canEdit" | "canDelete"
+                  ): boolean => {
+                    if (role === "admin") return true; // Admin has all access
+                    
+                    // Check if all pages in the module have the permission enabled
+                    return modulePages.every((pagePath) => {
+                      const access = roleAccess[role]?.[pagePath];
+                      if (permission === "canView") {
+                        return access?.canView ?? true; // Default to true
+                      }
+                      return access?.[permission] ?? false; // Default to false for add/edit/delete
+                    });
+                  };
+
+                  // Helper function to update module permission
+                  const handleModulePermissionChange = async (
+                    role: string,
+                    modulePages: string[],
+                    permission: "canView" | "canAdd" | "canEdit" | "canDelete",
+                    value: boolean
+                  ) => {
+                    if (role === "admin") return; // Can't modify admin
+
+                    // Set loading state
+                    const firstPage = modulePages[0];
+                    setUpdatingAccess(`${role}-${firstPage}-${permission}`);
+
+                    try {
+                      // Update all pages in the module
+                      for (const pagePath of modulePages) {
+                        const currentAccess = roleAccess[role]?.[pagePath] || {
+                          canView: true,
+                          canAdd: false,
+                          canEdit: false,
+                          canDelete: false,
+                        };
+
+                        const updatedAccess = {
+                          ...currentAccess,
+                          [permission]: value,
+                        };
+
+                        const response = await fetch("/api/role-access", {
+                          method: "PUT",
+                          headers: {
+                            "Content-Type": "application/json",
+                          },
+                          body: JSON.stringify({
+                            role,
+                            page: pagePath,
+                            canView: updatedAccess.canView,
+                            canAdd: updatedAccess.canAdd,
+                            canEdit: updatedAccess.canEdit,
+                            canDelete: updatedAccess.canDelete,
+                          }),
+                        });
+
+                        if (!response.ok) {
+                          const errorData = await response
+                            .json()
+                            .catch(() => ({ error: "Unknown error" }));
+                          console.error(
+                            "Error updating module permission:",
+                            errorData.error || response.statusText
+                          );
+                          await fetchRoleAccess();
+                          return;
+                        }
+                      }
+
+                      // Refresh role access after all updates
+                      await fetchRoleAccess();
+                    } catch (error) {
+                      console.error("Error updating module permission:", error);
+                      await fetchRoleAccess();
+                    } finally {
+                      setUpdatingAccess(null);
+                    }
+                  };
+
+                  // Modules that support full permissions (Add, Update, Delete)
+                  const modulesWithFullPermissions = ["Blog"];
+                  // Profile only has View and Update
+                  const profileModule = "Profile";
+
+                  return (
+                    <table className="min-w-full divide-y divide-gray-200">
+                      <thead className="bg-gray-50">
+                        <tr>
+                          <th
+                            rowSpan={2}
+                            className="px-6 py-4 text-left text-sm font-semibold text-gray-900 uppercase tracking-wider border-r border-gray-200"
                           >
-                            {role.charAt(0).toUpperCase() + role.slice(1)} Role
-                          </span>
-                          <span className="text-sm text-gray-600 font-normal">
-                            Configure permissions for {role} role
-                          </span>
-                        </h3>
-                      </div>
-
-                      {/* Role Permissions Table */}
-                      <table className="min-w-full divide-y divide-gray-200">
-                        <thead className="bg-gray-50">
-                          <tr>
-                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider sticky left-0 bg-gray-50 z-10">
-                              Page
-                            </th>
-                            <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
-                              Can View
-                            </th>
-                            <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
-                              Can Add
-                            </th>
-                            <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
-                              Can Edit
-                            </th>
-                            <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
-                              Can Delete
-                            </th>
-                          </tr>
-                        </thead>
-                        <tbody className="bg-white divide-y divide-gray-200">
-                          {pages.map((pagePath) => {
-                            // Get page name from API response or from roleAccess data
-                            const pageName = availablePages.find(p => p.path === pagePath)?.name ||
-                              roleAccess["editor"]?.[pagePath]?.pageName ||
-                              roleAccess["viewer"]?.[pagePath]?.pageName ||
-                              roleAccess["admin"]?.[pagePath]?.pageName ||
-                              pagePath;
-
-                            // Get access from API response (which includes defaults)
-                            const access = roleAccess[role]?.[pagePath] || {
-                              canView: true, // Default from API
-                              canAdd: pagePath === "/profile" ? true : false, // Profile defaults to true
-                              canEdit: pagePath === "/profile" ? true : false, // Profile defaults to true
-                              canDelete: pagePath === "/profile" ? true : false, // Profile defaults to true
-                            };
-
+                            Role
+                          </th>
+                          {modules.map((module) => {
+                            const hasFullPermissions =
+                              modulesWithFullPermissions.includes(module.name);
+                            const isProfile = module.name === profileModule;
+                            const colSpan = hasFullPermissions ? 4 : isProfile ? 2 : 1;
                             return (
-                              <tr key={`${role}-${pagePath}`} className="hover:bg-gray-50">
-                                <td className="px-6 py-4 whitespace-nowrap sticky left-0 bg-white z-10">
-                                  <div className="text-sm font-medium text-gray-900">
-                                    {pageName}
-                                  </div>
-                                  <div className="text-xs text-gray-500">
-                                    {pagePath}
-                                  </div>
-                                </td>
-                                <td className="px-6 py-4 whitespace-nowrap text-center">
-                                  <input
-                                    type="checkbox"
-                                    checked={access.canView}
-                                    onChange={(e) =>
-                                      handleAccessChange(
-                                        role,
-                                        pagePath,
-                                        "canView",
-                                        e.target.checked
-                                      )
-                                    }
-                                    disabled={
-                                      role === "admin" ||
-                                      updatingAccess ===
-                                        `${role}-${pagePath}-canView`
-                                    }
-                                    className="h-4 w-4 text-[#10b981] focus:ring-[#10b981] border-gray-300 rounded disabled:opacity-50 disabled:cursor-not-allowed"
-                                  />
-                                </td>
-                                <td className="px-6 py-4 whitespace-nowrap text-center">
-                                  <input
-                                    type="checkbox"
-                                    checked={access.canAdd}
-                                    onChange={(e) =>
-                                      handleAccessChange(
-                                        role,
-                                        pagePath,
-                                        "canAdd",
-                                        e.target.checked
-                                      )
-                                    }
-                                    disabled={
-                                      role === "admin" ||
-                                      updatingAccess === `${role}-${pagePath}-canAdd`
-                                    }
-                                    className="h-4 w-4 text-[#10b981] focus:ring-[#10b981] border-gray-300 rounded disabled:opacity-50 disabled:cursor-not-allowed"
-                                  />
-                                </td>
-                                <td className="px-6 py-4 whitespace-nowrap text-center">
-                                  <input
-                                    type="checkbox"
-                                    checked={access.canEdit}
-                                    onChange={(e) =>
-                                      handleAccessChange(
-                                        role,
-                                        pagePath,
-                                        "canEdit",
-                                        e.target.checked
-                                      )
-                                    }
-                                    disabled={
-                                      role === "admin" ||
-                                      updatingAccess ===
-                                        `${role}-${pagePath}-canEdit`
-                                    }
-                                    className="h-4 w-4 text-[#10b981] focus:ring-[#10b981] border-gray-300 rounded disabled:opacity-50 disabled:cursor-not-allowed"
-                                  />
-                                </td>
-                                <td className="px-6 py-4 whitespace-nowrap text-center">
-                                  <input
-                                    type="checkbox"
-                                    checked={access.canDelete}
-                                    onChange={(e) =>
-                                      handleAccessChange(
-                                        role,
-                                        pagePath,
-                                        "canDelete",
-                                        e.target.checked
-                                      )
-                                    }
-                                    disabled={
-                                      role === "admin" ||
-                                      updatingAccess ===
-                                        `${role}-${pagePath}-canDelete`
-                                    }
-                                    className="h-4 w-4 text-[#10b981] focus:ring-[#10b981] border-gray-300 rounded disabled:opacity-50 disabled:cursor-not-allowed"
-                                  />
-                                </td>
-                              </tr>
+                              <th
+                                key={module.name}
+                                colSpan={colSpan}
+                                className="px-6 py-4 text-center text-sm font-semibold text-gray-900 uppercase tracking-wider border-b border-gray-200"
+                              >
+                                <div>{module.name}</div>
+                                <div className="text-xs font-normal text-gray-500 mt-1">
+                                  {module.description}
+                                </div>
+                              </th>
                             );
                           })}
-                        </tbody>
-                      </table>
-                    </div>
-                  ));
+                        </tr>
+                        <tr>
+                          {modules.map((module) => {
+                            const hasFullPermissions =
+                              modulesWithFullPermissions.includes(module.name);
+                            const isProfile = module.name === profileModule;
+                            if (hasFullPermissions) {
+                              return (
+                                <React.Fragment key={module.name}>
+                                  <th className="px-4 py-2 text-xs font-medium text-gray-600 uppercase tracking-wider">
+                                    View
+                                  </th>
+                                  <th className="px-4 py-2 text-xs font-medium text-gray-600 uppercase tracking-wider">
+                                    Add
+                                  </th>
+                                  <th className="px-4 py-2 text-xs font-medium text-gray-600 uppercase tracking-wider">
+                                    Update
+                                  </th>
+                                  <th className="px-4 py-2 text-xs font-medium text-gray-600 uppercase tracking-wider">
+                                    Delete
+                                  </th>
+                                </React.Fragment>
+                              );
+                            } else if (isProfile) {
+                              return (
+                                <React.Fragment key={module.name}>
+                                  <th className="px-4 py-2 text-xs font-medium text-gray-600 uppercase tracking-wider">
+                                    View
+                                  </th>
+                                  <th className="px-4 py-2 text-xs font-medium text-gray-600 uppercase tracking-wider">
+                                    Update
+                                  </th>
+                                </React.Fragment>
+                              );
+                            } else {
+                              return (
+                                <th
+                                  key={module.name}
+                                  className="px-4 py-2 text-xs font-medium text-gray-600 uppercase tracking-wider"
+                                >
+                                  View
+                                </th>
+                              );
+                            }
+                          })}
+                        </tr>
+                      </thead>
+                      <tbody className="bg-white divide-y divide-gray-200">
+                        {roles.map((role) => (
+                          <tr key={role} className="hover:bg-gray-50">
+                            <td
+                              rowSpan={1}
+                              className="px-6 py-4 whitespace-nowrap border-r border-gray-200"
+                            >
+                              <div className="flex items-center">
+                                <span
+                                  className={`px-3 py-1 inline-flex text-sm leading-5 font-semibold rounded-full ${
+                                    role === "admin"
+                                      ? "bg-purple-100 text-purple-800"
+                                      : role === "editor"
+                                      ? "bg-green-100 text-green-800"
+                                      : "bg-blue-100 text-blue-800"
+                                  }`}
+                                >
+                                  {role.charAt(0).toUpperCase() + role.slice(1)}
+                                </span>
+                              </div>
+                            </td>
+                            {modules.map((module) => {
+                              const hasFullPermissions =
+                                modulesWithFullPermissions.includes(module.name);
+                              const isProfile = module.name === profileModule;
+                              const isUpdating = (permission: string) =>
+                                module.pages.some(
+                                  (pagePath) =>
+                                    updatingAccess ===
+                                    `${role}-${pagePath}-${permission}`
+                                );
+
+                              if (hasFullPermissions) {
+                                // Blog module - View, Add, Update, Delete
+                                return (
+                                  <React.Fragment key={`${role}-${module.name}`}>
+                                    {/* View */}
+                                    <td className="px-4 py-4 whitespace-nowrap text-center">
+                                      <div className="flex items-center justify-center gap-2">
+                                        <input
+                                          type="checkbox"
+                                          checked={hasModulePermission(
+                                            role,
+                                            module.pages,
+                                            "canView"
+                                          )}
+                                          onChange={(e) =>
+                                            handleModulePermissionChange(
+                                              role,
+                                              module.pages,
+                                              "canView",
+                                              e.target.checked
+                                            )
+                                          }
+                                          disabled={
+                                            role === "admin" ||
+                                            isUpdating("canView")
+                                          }
+                                          className="h-5 w-5 text-[#10b981] focus:ring-[#10b981] border-gray-300 rounded disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                                        />
+                                        {isUpdating("canView") && (
+                                          <LoadingSpinner size="sm" />
+                                        )}
+                                      </div>
+                                    </td>
+                                    {/* Add */}
+                                    <td className="px-4 py-4 whitespace-nowrap text-center">
+                                      <div className="flex items-center justify-center gap-2">
+                                        <input
+                                          type="checkbox"
+                                          checked={hasModulePermission(
+                                            role,
+                                            module.pages,
+                                            "canAdd"
+                                          )}
+                                          onChange={(e) =>
+                                            handleModulePermissionChange(
+                                              role,
+                                              module.pages,
+                                              "canAdd",
+                                              e.target.checked
+                                            )
+                                          }
+                                          disabled={
+                                            role === "admin" ||
+                                            isUpdating("canAdd")
+                                          }
+                                          className="h-5 w-5 text-[#10b981] focus:ring-[#10b981] border-gray-300 rounded disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                                        />
+                                        {isUpdating("canAdd") && (
+                                          <LoadingSpinner size="sm" />
+                                        )}
+                                      </div>
+                                    </td>
+                                    {/* Update */}
+                                    <td className="px-4 py-4 whitespace-nowrap text-center">
+                                      <div className="flex items-center justify-center gap-2">
+                                        <input
+                                          type="checkbox"
+                                          checked={hasModulePermission(
+                                            role,
+                                            module.pages,
+                                            "canEdit"
+                                          )}
+                                          onChange={(e) =>
+                                            handleModulePermissionChange(
+                                              role,
+                                              module.pages,
+                                              "canEdit",
+                                              e.target.checked
+                                            )
+                                          }
+                                          disabled={
+                                            role === "admin" ||
+                                            isUpdating("canEdit")
+                                          }
+                                          className="h-5 w-5 text-[#10b981] focus:ring-[#10b981] border-gray-300 rounded disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                                        />
+                                        {isUpdating("canEdit") && (
+                                          <LoadingSpinner size="sm" />
+                                        )}
+                                      </div>
+                                    </td>
+                                    {/* Delete */}
+                                    <td className="px-4 py-4 whitespace-nowrap text-center">
+                                      <div className="flex items-center justify-center gap-2">
+                                        <input
+                                          type="checkbox"
+                                          checked={hasModulePermission(
+                                            role,
+                                            module.pages,
+                                            "canDelete"
+                                          )}
+                                          onChange={(e) =>
+                                            handleModulePermissionChange(
+                                              role,
+                                              module.pages,
+                                              "canDelete",
+                                              e.target.checked
+                                            )
+                                          }
+                                          disabled={
+                                            role === "admin" ||
+                                            isUpdating("canDelete")
+                                          }
+                                          className="h-5 w-5 text-[#10b981] focus:ring-[#10b981] border-gray-300 rounded disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                                        />
+                                        {isUpdating("canDelete") && (
+                                          <LoadingSpinner size="sm" />
+                                        )}
+                                      </div>
+                                    </td>
+                                  </React.Fragment>
+                                );
+                              } else if (isProfile) {
+                                // Profile module - View and Update only
+                                return (
+                                  <React.Fragment key={`${role}-${module.name}`}>
+                                    {/* View */}
+                                    <td className="px-4 py-4 whitespace-nowrap text-center">
+                                      <div className="flex items-center justify-center gap-2">
+                                        <input
+                                          type="checkbox"
+                                          checked={hasModulePermission(
+                                            role,
+                                            module.pages,
+                                            "canView"
+                                          )}
+                                          onChange={(e) =>
+                                            handleModulePermissionChange(
+                                              role,
+                                              module.pages,
+                                              "canView",
+                                              e.target.checked
+                                            )
+                                          }
+                                          disabled={
+                                            role === "admin" ||
+                                            isUpdating("canView")
+                                          }
+                                          className="h-5 w-5 text-[#10b981] focus:ring-[#10b981] border-gray-300 rounded disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                                        />
+                                        {isUpdating("canView") && (
+                                          <LoadingSpinner size="sm" />
+                                        )}
+                                      </div>
+                                    </td>
+                                    {/* Update */}
+                                    <td className="px-4 py-4 whitespace-nowrap text-center">
+                                      <div className="flex items-center justify-center gap-2">
+                                        <input
+                                          type="checkbox"
+                                          checked={hasModulePermission(
+                                            role,
+                                            module.pages,
+                                            "canEdit"
+                                          )}
+                                          onChange={(e) =>
+                                            handleModulePermissionChange(
+                                              role,
+                                              module.pages,
+                                              "canEdit",
+                                              e.target.checked
+                                            )
+                                          }
+                                          disabled={
+                                            role === "admin" ||
+                                            isUpdating("canEdit")
+                                          }
+                                          className="h-5 w-5 text-[#10b981] focus:ring-[#10b981] border-gray-300 rounded disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                                        />
+                                        {isUpdating("canEdit") && (
+                                          <LoadingSpinner size="sm" />
+                                        )}
+                                      </div>
+                                    </td>
+                                  </React.Fragment>
+                                );
+                              } else {
+                                // Only View for Dashboard and Admin modules
+                                return (
+                                  <td
+                                    key={`${role}-${module.name}`}
+                                    className="px-4 py-4 whitespace-nowrap text-center"
+                                  >
+                                    <div className="flex items-center justify-center gap-2">
+                                      <input
+                                        type="checkbox"
+                                        checked={hasModulePermission(
+                                          role,
+                                          module.pages,
+                                          "canView"
+                                        )}
+                                        onChange={(e) =>
+                                          handleModulePermissionChange(
+                                            role,
+                                            module.pages,
+                                            "canView",
+                                            e.target.checked
+                                          )
+                                        }
+                                        disabled={
+                                          role === "admin" ||
+                                          isUpdating("canView")
+                                        }
+                                        className="h-5 w-5 text-[#10b981] focus:ring-[#10b981] border-gray-300 rounded disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                                      />
+                                      {isUpdating("canView") && (
+                                        <LoadingSpinner size="sm" />
+                                      )}
+                                    </div>
+                                  </td>
+                                );
+                              }
+                            })}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  );
                 })()}
               </div>
             )}
@@ -632,7 +918,7 @@ function AdminContent() {
                 </div>
                 <div className="ml-3">
                   <p className="text-sm text-purple-800">
-                    <strong>Admin role</strong> has all permissions (can_view, can_add, can_edit, can_delete) for all pages by default and cannot be modified.
+                    <strong>Admin role</strong> has all permissions for all modules by default and cannot be modified.
                   </p>
                 </div>
               </div>

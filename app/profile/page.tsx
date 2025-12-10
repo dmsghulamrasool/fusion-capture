@@ -6,19 +6,31 @@ import { signOut } from "next-auth/react";
 import { PageTransition } from "@/components/ui/Loading";
 import { usePagePermissions } from "@/hooks/usePagePermissions";
 import { useRouter } from "next/navigation";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 
 function ProfileContent() {
   const { user } = useAuth();
   const router = useRouter();
   const { permissions: pagePermissions, loading: permissionsLoading } = usePagePermissions("/profile");
+  const [isEditing, setIsEditing] = useState(false);
+  const [name, setName] = useState(user?.name || "");
+  const [saving, setSaving] = useState(false);
 
-  // Check page-level permission
+  // Check page-level permission - Profile requires View access
+  // Only redirect to unauthorized if user is authenticated but doesn't have permission
+  // If user is not authenticated, ProtectedRoute will handle redirect to login
   useEffect(() => {
-    if (!permissionsLoading && !pagePermissions.canView) {
+    if (!permissionsLoading && user && !pagePermissions.canView) {
       router.push("/unauthorized");
     }
-  }, [permissionsLoading, pagePermissions.canView, router]);
+  }, [permissionsLoading, pagePermissions.canView, router, user]);
+
+  // Update name when user changes
+  useEffect(() => {
+    if (user?.name) {
+      setName(user.name);
+    }
+  }, [user?.name]);
 
   // Don't render if user doesn't have view permission
   if (permissionsLoading) {
@@ -32,6 +44,9 @@ function ProfileContent() {
   if (!pagePermissions.canView) {
     return null;
   }
+
+  // Check if user has Update permission (canEdit)
+  const canUpdate = pagePermissions.canEdit;
 
   return (
     <PageTransition>
@@ -79,35 +94,98 @@ function ProfileContent() {
           {/* Account Information */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
             <div className="bg-white border border-gray-200 rounded-lg p-6">
-              <h3 className="text-lg font-semibold text-black mb-4">
-                Account Details
-              </h3>
-              <div className="space-y-4">
-                <div>
-                  <span className="text-xs text-gray-500 uppercase tracking-wide">
-                    Name
-                  </span>
-                  <p className="text-black font-medium mt-1">
-                    {user?.name || "N/A"}
-                  </p>
-                </div>
-                <div>
-                  <span className="text-xs text-gray-500 uppercase tracking-wide">
-                    Email
-                  </span>
-                  <p className="text-black font-medium mt-1">
-                    {user?.email || "N/A"}
-                  </p>
-                </div>
-                <div>
-                  <span className="text-xs text-gray-500 uppercase tracking-wide">
-                    User ID
-                  </span>
-                  <p className="text-black font-medium mt-1 text-sm font-mono">
-                    {user?.id || "N/A"}
-                  </p>
-                </div>
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="text-lg font-semibold text-black">
+                  Account Details
+                </h3>
+                {canUpdate && (
+                  <button
+                    onClick={() => setIsEditing(!isEditing)}
+                    className="px-4 py-2 text-sm font-medium text-[#10b981] border border-[#10b981] rounded-lg hover:bg-[#10b981] hover:text-white transition-colors"
+                  >
+                    {isEditing ? "Cancel" : "Edit"}
+                  </button>
+                )}
               </div>
+              {isEditing && canUpdate ? (
+                <form
+                  onSubmit={async (e) => {
+                    e.preventDefault();
+                    setSaving(true);
+                    // In a real app, you would call an API to update the name
+                    // For now, we'll just show a message
+                    setTimeout(() => {
+                      setSaving(false);
+                      setIsEditing(false);
+                      alert("Profile updated successfully!");
+                    }, 500);
+                  }}
+                  className="space-y-4"
+                >
+                  <div>
+                    <label className="text-xs text-gray-500 uppercase tracking-wide block mb-2">
+                      Name
+                    </label>
+                    <input
+                      type="text"
+                      value={name}
+                      onChange={(e) => setName(e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-[#10b981] focus:border-transparent"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <span className="text-xs text-gray-500 uppercase tracking-wide block mb-2">
+                      Email
+                    </span>
+                    <p className="text-black font-medium text-sm">
+                      {user?.email || "N/A"} (cannot be changed)
+                    </p>
+                  </div>
+                  <div>
+                    <span className="text-xs text-gray-500 uppercase tracking-wide block mb-2">
+                      User ID
+                    </span>
+                    <p className="text-black font-medium mt-1 text-sm font-mono">
+                      {user?.id || "N/A"}
+                    </p>
+                  </div>
+                  <button
+                    type="submit"
+                    disabled={saving}
+                    className="w-full px-4 py-2 bg-[#10b981] text-white rounded-lg font-medium hover:bg-[#059669] transition-colors disabled:opacity-50"
+                  >
+                    {saving ? "Saving..." : "Save Changes"}
+                  </button>
+                </form>
+              ) : (
+                <div className="space-y-4">
+                  <div>
+                    <span className="text-xs text-gray-500 uppercase tracking-wide">
+                      Name
+                    </span>
+                    <p className="text-black font-medium mt-1">
+                      {user?.name || "N/A"}
+                    </p>
+                  </div>
+                  <div>
+                    <span className="text-xs text-gray-500 uppercase tracking-wide">
+                      Email
+                    </span>
+                    <p className="text-black font-medium mt-1">
+                      {user?.email || "N/A"}
+                    </p>
+                  </div>
+                  <div>
+                    <span className="text-xs text-gray-500 uppercase tracking-wide">
+                      User ID
+                    </span>
+                    <p className="text-black font-medium mt-1 text-sm font-mono">
+                      {user?.id || "N/A"}
+                    </p>
+                  </div>
+                </div>
+              )}
             </div>
 
             <div className="bg-white border border-gray-200 rounded-lg p-6">

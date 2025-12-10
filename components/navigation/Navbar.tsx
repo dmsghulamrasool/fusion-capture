@@ -8,11 +8,15 @@ import { RequirePermission } from '../auth/RequirePermission';
 import { RequireRole } from '../auth/RequireRole';
 import { LoadingSpinner } from '../ui/Loading';
 import { useState } from 'react';
+import { usePagePermissions } from '@/hooks/usePagePermissions';
 
 export function Navbar() {
   const { user, loading } = useAuth();
   const pathname = usePathname();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  // Check profile and blog page permissions
+  const { permissions: profilePermissions, loading: profilePermissionsLoading } = usePagePermissions("/profile");
+  const { permissions: blogPermissions, loading: blogPermissionsLoading } = usePagePermissions("/blog");
 
   const navItems = [
     {
@@ -74,26 +78,62 @@ export function Navbar() {
             </Link>
             <div className="hidden md:flex space-x-6">
               {navItems.map((item) => {
-                // Public items always show
+                // Public items - Home always shows, Blog needs canView permission
                 if (item.public) {
-                  return (
-                    <Link
-                      key={item.href}
-                      href={item.href}
-                      className={`px-3 py-2 text-sm font-medium transition-colors ${
-                        pathname === item.href
-                          ? "text-[#10b981]"
-                          : "text-gray-700 hover:text-[#10b981]"
-                      }`}
-                    >
-                      {item.label}
-                    </Link>
-                  );
+                  // Home is always public
+                  if (item.href === '/') {
+                    return (
+                      <Link
+                        key={item.href}
+                        href={item.href}
+                        className={`px-3 py-2 text-sm font-medium transition-colors ${
+                          pathname === item.href
+                            ? "text-[#10b981]"
+                            : "text-gray-700 hover:text-[#10b981]"
+                        }`}
+                      >
+                        {item.label}
+                      </Link>
+                    );
+                  }
+                  // Blog needs canView permission check
+                  if (item.href === '/blog') {
+                    if (blogPermissionsLoading) {
+                      return null; // Don't show while loading
+                    }
+                    if (!blogPermissions.canView) {
+                      return null; // Don't show if no view permission
+                    }
+                    return (
+                      <Link
+                        key={item.href}
+                        href={item.href}
+                        className={`px-3 py-2 text-sm font-medium transition-colors ${
+                          pathname === item.href
+                            ? "text-[#10b981]"
+                            : "text-gray-700 hover:text-[#10b981]"
+                        }`}
+                      >
+                        {item.label}
+                      </Link>
+                    );
+                  }
                 }
 
-                // Items requiring auth
-                if (item.requiresAuth && !user) {
-                  return null;
+                // Items requiring auth - Profile needs canView permission
+                if (item.requiresAuth) {
+                  if (!user) {
+                    return null;
+                  }
+                  // For profile, check if user has canView permission
+                  if (item.href === '/profile') {
+                    if (profilePermissionsLoading) {
+                      return null; // Don't show while loading
+                    }
+                    if (!profilePermissions.canView) {
+                      return null; // Don't show if no view permission
+                    }
+                  }
                 }
 
                 // Items requiring permission
@@ -146,7 +186,7 @@ export function Navbar() {
                   {user.name || user.email}
                 </span>
                 <button
-                  onClick={() => signOut()}
+                  onClick={() => signOut({ callbackUrl: "/" })}
                   className="px-3 md:px-5 py-2 md:py-2.5 text-xs md:text-sm font-medium text-gray-700 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
                 >
                   <span className="hidden sm:inline">Sign Out</span>
@@ -211,27 +251,64 @@ export function Navbar() {
           <div className="md:hidden border-t border-gray-200 py-4">
             <div className="flex flex-col space-y-2">
               {navItems.map((item) => {
-                // Public items always show
+                // Public items - Home always shows, Blog needs canView permission
                 if (item.public) {
-                  return (
-                    <Link
-                      key={item.href}
-                      href={item.href}
-                      onClick={() => setMobileMenuOpen(false)}
-                      className={`px-4 py-2 text-sm font-medium transition-colors ${
-                        pathname === item.href
-                          ? "text-[#10b981] bg-gray-50"
-                          : "text-gray-700 hover:text-[#10b981] hover:bg-gray-50"
-                      }`}
-                    >
-                      {item.label}
-                    </Link>
-                  );
+                  // Home is always public
+                  if (item.href === '/') {
+                    return (
+                      <Link
+                        key={item.href}
+                        href={item.href}
+                        onClick={() => setMobileMenuOpen(false)}
+                        className={`px-4 py-2 text-sm font-medium transition-colors ${
+                          pathname === item.href
+                            ? "text-[#10b981] bg-gray-50"
+                            : "text-gray-700 hover:text-[#10b981] hover:bg-gray-50"
+                        }`}
+                      >
+                        {item.label}
+                      </Link>
+                    );
+                  }
+                  // Blog needs canView permission check
+                  if (item.href === '/blog') {
+                    if (blogPermissionsLoading) {
+                      return null; // Don't show while loading
+                    }
+                    if (!blogPermissions.canView) {
+                      return null; // Don't show if no view permission
+                    }
+                    return (
+                      <Link
+                        key={item.href}
+                        href={item.href}
+                        onClick={() => setMobileMenuOpen(false)}
+                        className={`px-4 py-2 text-sm font-medium transition-colors ${
+                          pathname === item.href
+                            ? "text-[#10b981] bg-gray-50"
+                            : "text-gray-700 hover:text-[#10b981] hover:bg-gray-50"
+                        }`}
+                      >
+                        {item.label}
+                      </Link>
+                    );
+                  }
                 }
 
-                // Items requiring auth
-                if (item.requiresAuth && !user) {
-                  return null;
+                // Items requiring auth - Profile needs canView permission
+                if (item.requiresAuth) {
+                  if (!user) {
+                    return null;
+                  }
+                  // For profile, check if user has canView permission
+                  if (item.href === '/profile') {
+                    if (profilePermissionsLoading) {
+                      return null; // Don't show while loading
+                    }
+                    if (!profilePermissions.canView) {
+                      return null; // Don't show if no view permission
+                    }
+                  }
                 }
 
                 // Items requiring permission

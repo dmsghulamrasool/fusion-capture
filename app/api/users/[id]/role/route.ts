@@ -4,6 +4,7 @@ import UserRole from "@/models/UserRole";
 
 /**
  * PUT - Update user role
+ * OPEN - No authentication required
  * Body: { role: 'admin' | 'editor' | 'viewer' }
  */
 export async function PUT(
